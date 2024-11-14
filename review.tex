@@ -175,30 +175,14 @@ The researchers evaluated FlowBender through both simulations and real-world imp
 
 
 
-\section{Template Overview}
-As noted in the introduction, the ``\verb|acmart|'' document class can
-be used to prepare many different kinds of documentation --- a
-double-blind initial submission of a full-length technical paper, a
-two-page SIGGRAPH Emerging Technologies abstract, a ``camera-ready''
-journal article, a SIGCHI Extended Abstract, and more --- all by
-selecting the appropriate {\itshape template style} and {\itshape
-  template parameters}.
+\section{Approach Overview}
+As noted in the introduction, this paper examines the challenges of load balancing in data center networks, emphasizing the importance of evenly distributing traffic across multiple paths to prevent congestion. This section will delve into the primary issues faced by data centers in detail and discuss current solutions, along with their strengths and weaknesses.
 
-This document will explain the major features of the document
-class. For further information, the {\itshape \LaTeX\ User's Guide} is
-available from
-\url{https://www.acm.org/publications/proceedings-template}.
+\subsection{Main Problem}
 
-\subsection{Template Styles}
+ECMP is the standard mechanism used in datacenters for load balancing data across multiple paths. In ECMP, the switch calculates a hash function based on the packet’s header fields. The resulting hash value determines the port used to forward the packet. ECMP assigns flows to paths based on this static hash value derived from each flow’s identifying fields. Once a flow is assigned to a path, it consistently uses that same path, with no dynamic adjustment based on traffic conditions. For short-lived flows, this design works effectively. However, issues arise with long-lived flows (flows that persist for an extended period), as they can lead to collisions. When two flows generate the same hash value, they collide and are assigned to the same path, regardless of other available paths. If these flows are long-lived, they will continuously occupy and congest that path. Because ECMP’s flow-to-path assignment is static, it cannot redistribute or rebalance these long flows across other, less congested paths.
 
-The primary parameter given to the ``\verb|acmart|'' document class is
-the {\itshape template style} which corresponds to the kind of publication
-or SIG publishing the work. This parameter is enclosed in square
-brackets and is a part of the {\verb|documentclass|} command:
-\begin{verbatim}
-  \documentclass[STYLE]{acmart}
-\end{verbatim}
-
+\begin{comment}
 Journals use one of three template styles. All but three ACM journals
 use the {\verb|acmsmall|} template style:
 \begin{itemize}
@@ -213,8 +197,16 @@ The majority of conference proceedings documentation will use the {\verb|acmconf
 \item{\texttt{sigchi}}: Used for SIGCHI conference articles.
 \item{\texttt{sigplan}}: Used for SIGPLAN conference articles.
 \end{itemize}
+\end{comment}
 
-\subsection{Template Parameters}
+\subsection{Existing Solutions}
+Many solutions aim to achieve better load balancing in datacenters and address the issues associated with ECMP. MPTCP (Multipath TCP) splits a single TCP flow into multiple subflows, each with a different port number. Since port numbers are part of the ECMP hashing function, these distinct subflows are hashed to different paths in the network, distributing the traffic load more evenly. By splitting traffic across multiple paths, MPTCP helps avoid the problem that arises when ECMP assigns long flows to the same path, allowing for dynamic traffic distribution based on network conditions. In MPTCP, the sender has additional responsibilities: it monitors metrics such as Round-Trip Time (RTT), throughput, and packet loss for each subflow and prioritizes paths with better performance. The receiver, on the other hand, requires extra logic to reassemble data from multiple subflows back into the original stream, which adds complexity. MPTCP has demonstrated improvements over ECMP for larger flows (those over 70 KB) as it effectively balances load across multiple paths, avoiding the limitations of ECMP’s static path assignment for long flows. However, MPTCP has some drawbacks. The congestion control algorithm on the sender side and the data reassembly logic on the receiver side are complex, adding over 10,000 lines of kernel code. This complexity can slow down performance and increase the difficulty of implementation and maintenance. Additionally, MPTCP incurs significant CPU overhead, consuming around 40\% of CPU on clients and 10\% on servers—considered excessive for datacenter environments.
+
+On the other hand, Random Packet Spraying (RPS) and DeTail shift the responsibility for load balancing to the network switches. RPS operates at the packet level rather than the flow level, meaning each packet within a flow can take a different path through the network. For every packet, the switch randomly selects an output port from a set of available ports, independently forwarding each packet along different paths. RPS performs well in symmetric topologies like fat-tree structures, where paths between devices are balanced and equal. In such cases, packets reach their destinations efficiently, even when they are randomly sprayed across paths. However, when the network experiences asymmetries—due to link failures or incremental deployments (where new equipment is added over time)—RPS can lead to significant throughput inefficiencies, as it may overload some paths while underutilizing others.
+
+DeTail overcomes RPS’s limitations by combining Priority Flow Control (PFC) and adaptive routing to enhance tail latency and network utilization. PFC ensures lossless packet forwarding by preventing packet drops. However, PFC comes with challenges, such as the risk of network deadlock (when packets are indefinitely stuck in the network) and head-of-line (HOL) blocking within the same priority class, which can delay traffic. DeTail uses a form of adaptive routing where each packet chooses the least congested eligible port at each switch. This strategy helps reduce congestion by dynamically balancing traffic based on real-time network conditions. However, adaptive routing also presents challenges. It requires custom switch silicon to monitor queue lengths in real-time and to forward packets accordingly. This specialized hardware is expensive and has long production cycles, making rapid deployment challenging. Another issue is that, since DeTail performs load balancing at the per-packet level, packets can take different paths, leading to out-of-order delivery. This disrupts the TCP flow and disables TCP’s fast retransmit feature, which is used to quickly resend lost packets. Lastly, because DeTail operates at the link layer, it cannot manage failures on paths that have only one way to reach the destination. If a link fails in a part of the network where there is no alternate path (a deterministic part of the path), DeTail cannot reroute around the failure. It lacks mechanisms to switch the flow to an entirely different route that bypasses the failed link.
+ 
+
 
 In addition to specifying the {\itshape template style} to be used in
 formatting your work, there are a number of {\itshape template parameters}
